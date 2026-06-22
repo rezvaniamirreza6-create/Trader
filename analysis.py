@@ -22,60 +22,48 @@ import requests
 # بخش ۱: دریافت داده قیمت
 # ============================================================
 
-def get_crypto_data(symbol="BTCUSDT", interval="1h", limit=200):
+def get_market_data(symbol, api_key, interval="1h", outputsize=200):
     """
-    دریافت داده‌ی کندل (OHLC) از API عمومی و رایگان Binance.
-    این API نیاز به کلید (API Key) ندارد و برای داده‌های کریپتو رایگان است.
+    دریافت داده‌ی کندل (OHLC) از Twelve Data برای کریپتو یا فارکس.
 
-    symbol: مثلاً BTCUSDT, ETHUSDT
-    interval: 1m, 5m, 15m, 1h, 4h, 1d
-    limit: تعداد کندل‌های اخیر
-    """
-    url = "https://api.binance.com/api/v3/klines"
-    params = {"symbol": symbol, "interval": interval, "limit": limit}
+    ⚠️ چرا از Binance استفاده نمی‌کنیم؟
+    سرورهای Railway روی IP رنج‌هایی هستند که Binance به‌خاطر محدودیت
+    قانونی/منطقه‌ای مسدودشان کرده (خطای HTTP 451). Twelve Data این
+    محدودیت را ندارد، برای همین برای هر دو بازار از همین یک منبع
+    استفاده می‌کنیم.
 
-    response = requests.get(url, params=params, timeout=10)
-    response.raise_for_status()
-    raw = response.json()
-
-    df = pd.DataFrame(raw, columns=[
-        "open_time", "open", "high", "low", "close", "volume",
-        "close_time", "quote_asset_volume", "trades",
-        "taker_buy_base", "taker_buy_quote", "ignore"
-    ])
-
-    df["close"] = df["close"].astype(float)
-    df["high"] = df["high"].astype(float)
-    df["low"] = df["low"].astype(float)
-    df["open"] = df["open"].astype(float)
-
-    return df[["open", "high", "low", "close"]]
-
-
-def get_forex_data(symbol="EURUSD", api_key=None):
-    """
-    دریافت داده‌ی فارکس از Twelve Data (نیاز به کلید رایگان دارد).
-    برای گرفتن کلید رایگان: https://twelvedata.com/
-
-    اگر کلید نداری، فعلاً این تابع کار نمی‌کند و باید از get_crypto_data استفاده کنید
-    یا یک API دیگر برای فارکس متصل کنید.
+    symbol: فرمت Twelve Data همیشه با اسلش است:
+            کریپتو → "BTC/USD", "ETH/USD"
+            فارکس  → "EUR/USD", "GBP/USD"
     """
     if not api_key:
         raise ValueError(
-            "برای داده فارکس به یک API Key نیاز است. "
-            "از twelvedata.com یک کلید رایگان بگیرید و در config.py قرار دهید."
+            "برای دریافت داده به یک API Key نیاز است. "
+            "از twelvedata.com یک کلید رایگان بگیرید و در Railway به عنوان "
+            "متغیر محیطی TWELVE_DATA_API_KEY قرار دهید."
         )
 
     url = "https://api.twelvedata.com/time_series"
     params = {
         "symbol": symbol,
-        "interval": "1h",
-        "outputsize": 200,
+        "interval": interval,
+        "outputsize": outputsize,
         "apikey": api_key,
     }
     response = requests.get(url, params=params, timeout=10)
     response.raise_for_status()
     raw = response.json()
+
+    if "values" not in raw:
+        raise ValueError(f"خطا در دریافت داده: {raw.get('message', 'نامشخص')}")
+
+    df = pd.DataFrame(raw["values"])
+    df["close"] = df["close"].astype(float)
+    df["high"] = df["high"].astype(float)
+    df["low"] = df["low"].astype(float)
+    df["open"] = df["open"].astype(float)
+    df = df.iloc[::-1].reset_index(drop=True)
+    return df[["open", "high", "low", "close"]]
 
     if "values" not in raw:
         raise ValueError(f"خطا در دریافت داده: {raw.get('message', 'نامشخص')}")
